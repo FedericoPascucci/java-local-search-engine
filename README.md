@@ -4,7 +4,7 @@ A local search engine built from scratch in **Java**, designed to index and quer
 
 # Demo of the Search Engine 
 
-
+https://github.com/user-attachments/assets/25380027-aa1e-4a2a-a7ff-976568b9cf41
 
 # 🧠 Core Algorithms & Data Structures
 This engine goes beyond simple text matching by implementing real-world search engine logic:
@@ -14,6 +14,12 @@ This engine goes beyond simple text matching by implementing real-world search e
   * **Stop-Words Filter:** Automatic removal of common English words to optimize memory usage and improve mathematical precision.
   * **Porter Stemmer:** Integration of M.Porter's standard algorithm (1980) to reduce words to their root form (e.g., *vampires* -> *vampir*), significantly improving search recall.
 * **Boolean Search (AND):** Support for multi-word queries with strict document set intersection.
+
+# 📂 Recursive Navigation & Smart Filtering
+The engine doesn't just read a flat directory, it acts as a crawler for your local file system:
+* **Labyrinth Search (Recursion):** The file reader uses a recursive algorithm to dive into deep, nested directory trees. No matter how complex the folder structure is, the engine explores every single branch and sub-folder to find hidden archives.
+* **Targeted Extraction:** It strictly targets Project Gutenberg's specific zip formats (like `-0.zip`), ignoring irrelevant system files.
+* **Language & Format Filtering:** The algorithm automatically unzips the archives in-memory, extracting only valid `.txt` files and specifically filtering for English literature texts, seamlessly skipping incompatible or foreign formats.
 
 # 💻 GUI & Features
 * Intuitive Graphical User Interface built with **Java Swing**.
