@@ -1,0 +1,610 @@
+import java.io.*;
+import java.util.*;
+
+public class main {
+    public static void main(String[] args) {
+        DocumentReader lettore = new DocumentReader();
+        String percorsoCartella = "C:\\Users\\feder\\Documenti\\Creazioni\\RobaBrowser\\aleph.gutenberg.org";
+        File cartellaPrincipale = new File(percorsoCartella);
+        
+        System.out.println("Inizio esplorazione del disco...");
+        lettore.esploraCartella(cartellaPrincipale);
+        List<Documento> tuttiLibri = lettore.getDocumentiTrovati();
+        
+        System.out.println("\nResearch Compleated!");
+        System.out.println("Total number of books saved in RAM (excluding duplicates): " + tuttiLibri.size());
+        
+        System.out.println("\nBuilding Inverted Index. This might take a bit...");
+        
+        InvertedIndex motoreDiRicerca = new InvertedIndex();
+        TextCleaner cleaner = new TextCleaner();
+
+        for(Documento libro : tuttiLibri){
+            motoreDiRicerca.aggiungiDocumento(libro, cleaner);
+        }
+        
+        System.out.println("Index succesfully built!");
+        System.out.println("Starting UI...");
+        javax.swing.SwingUtilities.invokeLater(() -> {
+            UI finestra = new UI(motoreDiRicerca, cleaner);
+            finestra.setVisible(true); 
+        });
+        
+    }
+}
+
+
+//Implementation of Martin Porter's Stemming Algorithm (1980).
+//Open-source standard for Information Retrieval in the English language.
+//Original Java implementation by Martin Porter. Adapted for this project.
+
+public class Stemmer {
+
+    private char[] b;
+    private int i, i_end, j, k;
+    private static final int INC = 50;
+
+    public Stemmer() {
+        b = new char[INC];
+        i = 0;
+        i_end = 0;
+    }
+
+    public void add(char ch) {
+        if (i == b.length) {
+            char[] new_b = new char[i + INC];
+            for (int c = 0; c < i; c++) new_b[c] = b[c];
+            b = new_b;
+        }
+        b[i++] = ch;
+    }
+
+    private final boolean cons(int i) {
+        switch (b[i]) {
+            case 'a': case 'e': case 'i': case 'o': case 'u': return false;
+            case 'y': return (i == 0) ? true : !cons(i - 1);
+            default: return true;
+        }
+    }
+
+    private final int m() {
+        int n = 0;
+        int i = 0;
+        while (true) {
+            if (i > j) return n;
+            if (!cons(i)) break; i++;
+        }
+        i++;
+        while (true) {
+            while (true) {
+                if (i > j) return n;
+                if (cons(i)) break;
+                i++;
+            }
+            i++;
+            n++;
+            while (true) {
+                if (i > j) return n;
+                if (!cons(i)) break;
+                i++;
+            }
+            i++;
+        }
+    }
+
+    private final boolean vowelinstem() {
+        for (int i = 0; i <= j; i++) if (!cons(i)) return true;
+        return false;
+    }
+
+    private final boolean doublec(int j) {
+        if (j < 1) return false;
+        if (b[j] != b[j - 1]) return false;
+        return cons(j);
+    }
+
+    private final boolean cvc(int i) {
+        if (i < 2 || !cons(i) || cons(i - 1) || !cons(i - 2)) return false;
+        int ch = b[i];
+        if (ch == 'w' || ch == 'x' || ch == 'y') return false;
+        return true;
+    }
+
+    private final boolean ends(String s) {
+        int l = s.length();
+        int o = k - l + 1;
+        if (o < 0) return false;
+        for (int i = 0; i < l; i++) if (b[o + i] != s.charAt(i)) return false;
+        j = k - l;
+        return true;
+    }
+
+    private final void setto(String s) {
+        int l = s.length();
+        int o = j + 1;
+        for (int i = 0; i < l; i++) b[o + i] = s.charAt(i);
+        k = j + l;
+    }
+
+    private final void r(String s) { if (m() > 0) setto(s); }
+
+    private final void step1() {
+        if (b[k] == 's') {
+            if (ends("sses")) k -= 2;
+            else if (ends("ies")) setto("i");
+            else if (b[k - 1] != 's') k--;
+        }
+        if (ends("eed")) { if (m() > 0) k--; }
+        else if ((ends("ed") || ends("ing")) && vowelinstem()) {
+            k = j;
+            if (ends("at")) setto("ate");
+            else if (ends("bl")) setto("ble");
+            else if (ends("iz")) setto("ize");
+            else if (doublec(k)) {
+                k--;
+                int ch = b[k];
+                if (ch == 'l' || ch == 's' || ch == 'z') k++;
+            }
+            else if (m() == 1 && cvc(k)) setto("e");
+        }
+    }
+
+    private final void step2() {
+        if (ends("y") && vowelinstem()) b[k] = 'i';
+    }
+
+    private final void step3() {
+        if (k == 0) return;
+        switch (b[k - 1]) {
+            case 'a': if (ends("ational")) { r("ate"); break; }
+                      if (ends("tional")) { r("tion"); break; } break;
+            case 'c': if (ends("enci")) { r("ence"); break; }
+                      if (ends("anci")) { r("ance"); break; } break;
+            case 'e': if (ends("izer")) { r("ize"); break; } break;
+            case 'l': if (ends("bli")) { r("ble"); break; }
+                      if (ends("alli")) { r("al"); break; }
+                      if (ends("entli")) { r("ent"); break; }
+                      if (ends("eli")) { r("e"); break; }
+                      if (ends("ousli")) { r("ous"); break; } break;
+            case 'o': if (ends("ization")) { r("ize"); break; }
+                      if (ends("ation")) { r("ate"); break; }
+                      if (ends("ator")) { r("ate"); break; } break;
+            case 's': if (ends("alism")) { r("al"); break; }
+                      if (ends("iveness")) { r("ive"); break; }
+                      if (ends("fulness")) { r("ful"); break; }
+                      if (ends("ousness")) { r("ous"); break; } break;
+            case 't': if (ends("aliti")) { r("al"); break; }
+                      if (ends("iviti")) { r("ive"); break; }
+                      if (ends("biliti")) { r("ble"); break; } break;
+            case 'g': if (ends("logi")) { r("log"); break; } break;
+        }
+    }
+
+    private final void step4() {
+        switch (b[k]) {
+            case 'e': if (ends("icate")) { r("ic"); break; }
+                      if (ends("ative")) { r(""); break; }
+                      if (ends("alize")) { r("al"); break; } break;
+            case 'i': if (ends("iciti")) { r("ic"); break; } break;
+            case 'l': if (ends("ical")) { r("ic"); break; }
+                      if (ends("ful")) { r(""); break; } break;
+            case 's': if (ends("ness")) { r(""); break; } break;
+        }
+    }
+
+    private final void step5() {
+        if (k == 0) return;
+        switch (b[k - 1]) {
+            case 'a': if (ends("al")) break; return;
+            case 'c': if (ends("ance")) break; if (ends("ence")) break; return;
+            case 'e': if (ends("er")) break; return;
+            case 'i': if (ends("ic")) break; return;
+            case 'l': if (ends("able")) break; if (ends("ible")) break; return;
+            case 'n': if (ends("ant")) break; if (ends("ement")) break;
+                      if (ends("ment")) break; if (ends("ent")) break; return;
+            case 'o': if (ends("ion") && j >= 0 && (b[j] == 's' || b[j] == 't')) break;
+                      if (ends("ou")) break; return;
+            case 's': if (ends("ism")) break; return;
+            case 't': if (ends("ate")) break; if (ends("iti")) break; return;
+            case 'u': if (ends("ous")) break; return;
+            case 'v': if (ends("ive")) break; return;
+            case 'z': if (ends("ize")) break; return;
+            default: return;
+        }
+        if (m() > 1) k = j;
+    }
+
+    private final void step6() {
+        j = k;
+        if (b[k] == 'e') {
+            int a = m();
+            if (a > 1 || a == 1 && !cvc(k - 1)) k--;
+        }
+        if (b[k] == 'l' && doublec(k) && m() > 1) k--;
+    }
+
+    public void stem() {
+        k = i - 1;
+        if (k > 1) {
+            step1(); step2(); step3(); step4(); step5(); step6();
+        }
+        i_end = k + 1;
+        i = 0;
+    }
+
+    public String toString() {
+        return new String(b, 0, i_end);
+    }
+
+    // method added to match TextCleaner class
+    
+    public static String trovaRadice(String parola){
+        Stemmer s = new Stemmer();
+        char[] chars = parola.toCharArray();
+        for(char c : chars){
+            s.add(c);
+        }
+        s.stem();
+        return s.toString();
+    }
+}
+import java.util.*;
+
+public class TextCleaner {
+	
+	private Set<String> paroleInutili = new HashSet<>(Arrays.asList(
+	        "the", "and", "of", "to", "a", "in", "it", "is", "that", "was", "for",
+	        "on", "with","as", "by", "this", "at", "but", "not", "or",
+	        "an", "from", "my", "they", "we", "you", "he", "she", "his", "her",
+	        "i", "be", "have", "had", "which", "their", "are", "were", "all"));
+
+    public List<String> pulisciTesto(String testoGrezzo) {
+        
+        List<String> parolePulite = new ArrayList<>();
+
+        if(testoGrezzo == null || testoGrezzo.isEmpty()){
+            return parolePulite;
+        }
+
+        String testoMinuscolo = testoGrezzo.toLowerCase();
+        String testoSenzaPunti = testoMinuscolo.replaceAll("[^a-z0-9\\s]", "");        //regex
+        String[] tokens = testoSenzaPunti.split("\\s+");
+
+        for(String parola : tokens){
+            if(!parola.trim().isEmpty() && !paroleInutili.contains(parola.trim())){
+            	String radice = Stemmer.trovaRadice(parola);   //stemming
+                parolePulite.add(radice);
+            }
+        }
+
+        return parolePulite;
+    }
+}
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
+import java.io.File;
+import java.io.FileInputStream;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
+import java.util.List;
+import java.util.Map;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+
+public class UI extends JFrame {
+    
+    private InvertedIndex motore;
+    private TextCleaner spazzino;
+    private List<Map.Entry<Documento, Double>> ultimiRisultati = null;
+    
+    private JTextField campoRicerca;
+    private JTextArea areaRisultati;
+    private JButton bottoneCerca;
+    private JTextField campoNumeroFile;
+    private JButton bottoneApriFile;
+
+    public UI(InvertedIndex motore, TextCleaner spazzino){
+        this.motore = motore;
+        this.spazzino = spazzino;
+        
+        setTitle("FP's Search Engine");
+        setSize(850, 600); 
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        setLocationRelativeTo(null);
+        
+        //nord
+        
+        JPanel pannelloNord = new JPanel(new BorderLayout());
+        campoRicerca = new JTextField();
+        campoRicerca.setFont(new Font("Arial",Font.PLAIN, 16));
+        bottoneCerca = new JButton("Search");
+        pannelloNord.add(new JLabel(" Insert search terms: "),BorderLayout.WEST);
+        pannelloNord.add(campoRicerca,BorderLayout.CENTER);
+        pannelloNord.add(bottoneCerca,BorderLayout.EAST);
+        
+        //centro
+        
+        areaRisultati = new JTextArea();
+        areaRisultati.setFont(new Font("Monospaced",Font.PLAIN, 14));
+        areaRisultati.setEditable(false); 
+        areaRisultati.setText("WELCOME TO FP's SEARCH ENGINE\n\n" +
+                              "> Enter your search terms in the bar at the top and press the 'Search' button or the Enter key.\n" +
+                              "> To turn off the engine, type 'stop' and press Enter, or click the X at the top.\n" +
+                              "> Use the panel below to open and read the book directly!\n" +
+                              "> Thx to Project Gutenberg <3\n" +
+                              "==============================================================================\n");
+        JScrollPane scrollPane = new JScrollPane(areaRisultati);
+        
+        // sud
+        
+        JPanel pannelloSud = new JPanel(new FlowLayout());
+        campoNumeroFile = new JTextField(5); 
+        bottoneApriFile = new JButton("Open Selected File");
+        pannelloSud.add(new JLabel("Insert the book's result number here to read it: "));
+        pannelloSud.add(campoNumeroFile);
+        pannelloSud.add(bottoneApriFile);
+        
+        add(pannelloNord, BorderLayout.NORTH);
+        add(scrollPane, BorderLayout.CENTER);
+        add(pannelloSud, BorderLayout.SOUTH); 
+        
+        configuraAzioni();
+    }
+    
+    private void configuraAzioni(){
+        ActionListener azioneRicerca = new ActionListener(){
+            @Override
+            public void actionPerformed(ActionEvent e){
+                eseguiRicerca();
+            }
+        };
+        bottoneCerca.addActionListener(azioneRicerca);
+        campoRicerca.addActionListener(azioneRicerca);
+        
+        bottoneApriFile.addActionListener(new ActionListener(){
+            @Override
+            public void actionPerformed(ActionEvent e){
+                apriFileSelezionato();
+            }
+        });
+    }
+    
+    private void eseguiRicerca(){
+        String query = campoRicerca.getText();
+        
+        if (query.trim().equalsIgnoreCase("stop")){
+            System.exit(0);
+        }
+        
+        if (query.trim().isEmpty()){
+            areaRisultati.setText("Please, insert something in the Search Bar.");
+            return;
+        }
+        
+        areaRisultati.setText("Searching for: '" + query + "'...\n\n");
+        ultimiRisultati = motore.cerca(query, spazzino); 
+        
+        if (ultimiRisultati.isEmpty()){
+            areaRisultati.append("No books found.");
+        }else{
+            areaRisultati.append(ultimiRisultati.size() + " books found! Here's the first 20:\n");
+            areaRisultati.append("------------------------------------------------------------------------------\n");
+            
+            int count = 0;
+            for(Map.Entry<Documento, Double> risultato : ultimiRisultati){
+                if (count >= 20) break;
+                Documento doc = risultato.getKey();
+                String riga = String.format("%2d. [Score: %6.2f] %s (di %s) [File: %s]\n", 
+                		(count + 1), risultato.getValue(), doc.getTitolo(), doc.getAutore(), doc.getNomeFileOriginale());
+                areaRisultati.append(riga);
+                count++;
+            }
+        }
+    }
+    
+    private void apriFileSelezionato(){
+        if(ultimiRisultati == null || ultimiRisultati.isEmpty()){
+            JOptionPane.showMessageDialog(this, "You need to search something before opening a file!");
+            return;
+        }
+        
+        try{
+            int numeroScelto = Integer.parseInt(campoNumeroFile.getText().trim());
+            int indiceArray = numeroScelto - 1;
+            
+            if(indiceArray >= 0 && indiceArray < ultimiRisultati.size() && indiceArray < 20){
+                Documento docScelto = ultimiRisultati.get(indiceArray).getKey();
+                File fileZipOriginale = new File(docScelto.getPercorso());
+                if(Desktop.isDesktopSupported() && fileZipOriginale.exists()){
+                    File fileTxtTemporaneo = File.createTempFile("GutenbergBook_", ".txt");
+                    fileTxtTemporaneo.deleteOnExit(); 
+                    try(ZipInputStream zis = new ZipInputStream(new FileInputStream(fileZipOriginale))){
+                        ZipEntry entry;
+                        while((entry = zis.getNextEntry()) != null){
+                            if(entry.getName().endsWith(".txt")){
+                                Files.copy(zis, fileTxtTemporaneo.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                                break;
+                            }
+                        }
+                    }
+                    Desktop.getDesktop().open(fileTxtTemporaneo);
+                }else{
+                    JOptionPane.showMessageDialog(this, "Unable to open the file / File not found");
+                }  
+            }else{
+                JOptionPane.showMessageDialog(this, "Invalid number. Insert a value between 1 and " + Math.min(20, ultimiRisultati.size()));
+            }
+        }catch(NumberFormatException ex){
+            JOptionPane.showMessageDialog(this, "Please, insert a valid number.");
+        }catch(Exception ex){
+            JOptionPane.showMessageDialog(this, "Unexpected error while opening: " + ex.getMessage());
+        }
+    }
+}
+
+public class Documento {
+
+    private String titolo;
+    private String autore;
+    private String testo;
+    private String nomeFileOriginale; 
+    private String percorso; 
+    
+    public Documento(String titolo, String autore, String contenutoTestuale, String nomeFileOriginale, String percorso) {
+        this.titolo = titolo;
+        this.autore = autore;
+        this.testo = contenutoTestuale;
+        this.nomeFileOriginale = nomeFileOriginale;
+        this.percorso = percorso;
+    }
+
+    public String getTitolo(){
+        return titolo;
+    }
+
+    public String getAutore(){
+        return autore;
+    }
+
+    public String getContenutoTestuale(){
+        return testo;
+    }
+
+    public String getNomeFileOriginale(){
+        return nomeFileOriginale;
+    }
+    
+    public String getPercorso(){
+        return percorso;
+    }
+}
+import java.io.*;
+import java.util.*;
+import java.util.zip.*;
+
+public class DocumentReader {
+	private List<Documento> documentiTrovati = new ArrayList<>();
+    public void esploraCartella(File cartellaAttuale) {	
+    	File[] contenuto = cartellaAttuale.listFiles();
+    	if(contenuto != null){
+            for(File elemento : contenuto){
+                if(elemento.isDirectory()){
+                    esploraCartella(elemento);
+                }else if(elemento.getName().endsWith("-0.zip")){
+                        processaZip(elemento); 
+                }
+            }
+        }
+    }
+
+    public void processaZip(File fileZip) {
+        try(ZipInputStream zis = new ZipInputStream(new FileInputStream(fileZip))){
+            ZipEntry entry;
+            
+            while((entry = zis.getNextEntry()) != null){
+                if(entry.getName().endsWith(".txt")){
+                    BufferedReader reader = new BufferedReader(new InputStreamReader(zis, "UTF-8"));
+                    
+                    String riga;
+                    String titolo = "Unknown Title";
+                    String autore = "Unknown Author";
+                    
+                    StringBuilder testoLibro = new StringBuilder(); 
+
+                    while((riga = reader.readLine()) != null){
+
+                        if(riga.startsWith("Title: ")){
+                            titolo = riga.substring(7).trim(); 
+                        } 
+                        else if(riga.startsWith("Author: ")){
+                            autore = riga.substring(8).trim();
+                        }
+
+                        testoLibro.append(riga).append("\n"); 
+                    }
+
+                    Documento nuovoLibro = new Documento(titolo, autore, testoLibro.toString(), fileZip.getName(), fileZip.getAbsolutePath());
+
+                    documentiTrovati.add(nuovoLibro);
+                    
+                    System.out.println("Saved in memory: " + titolo + " (by " + autore + ")");
+                }
+            }
+        }catch(Exception e){
+            System.err.println("Unable to read: " + fileZip.getName());
+        }
+    }
+    
+    public List<Documento> getDocumentiTrovati(){
+        return documentiTrovati;
+    }
+
+}
+import java.util.*;
+
+public class InvertedIndex {
+	
+	private int totaleDocumenti=0;   //documents counter
+
+    private Map<String, Map<Documento, Integer>> indice = new HashMap<>();
+
+    public void aggiungiDocumento(Documento doc, TextCleaner cleaner) {
+    	totaleDocumenti++;
+        List<String> parolePulite = cleaner.pulisciTesto(doc.getContenutoTestuale());
+        
+        for(String parola : parolePulite){
+            if(!indice.containsKey(parola)){
+                indice.put(parola, new HashMap<>());
+            }
+            Map<Documento, Integer> frequenzeDocumento = indice.get(parola);
+            int conteggioAttuale = frequenzeDocumento.getOrDefault(doc, 0);
+            frequenzeDocumento.put(doc, conteggioAttuale + 1);
+        }
+    }
+
+    public List<Map.Entry<Documento, Double>> cerca(String parolaCercata, TextCleaner cleaner) {
+        List<String> paroleRicerca = cleaner.pulisciTesto(parolaCercata);
+
+        if(paroleRicerca.isEmpty() || totaleDocumenti==0){
+            return new ArrayList<>();
+        }
+        String primaParola = paroleRicerca.get(0);
+        if(!indice.containsKey(primaParola)){
+            return new ArrayList<>(); 
+        }
+
+        Set<Documento> documentiSopravvissuti = new HashSet<>(indice.get(primaParola).keySet());
+        
+        for(int i = 1; i < paroleRicerca.size(); i++){
+            String parolaCorrente = paroleRicerca.get(i);
+            if (!indice.containsKey(parolaCorrente)) return new ArrayList<>();
+            documentiSopravvissuti.retainAll(indice.get(parolaCorrente).keySet()); //intersezione
+        }
+        
+        //TF-IDF   :    W = TF * log10 (N/DF)
+        
+        Map<Documento, Double> punteggiFinali = new HashMap<>();
+        
+        for(Documento doc : documentiSopravvissuti){
+            double punteggioTotale = 0.0;
+            for(String parola : paroleRicerca){
+                Map<Documento, Integer> mappaFrequenze = indice.get(parola);
+                
+                int tf = mappaFrequenze.get(doc); //quante volte nel documento  ,  term frequency
+                int df = mappaFrequenze.size();   //in quanti documento compare  ,  document frequency
+                double idf = Math.log10((double) totaleDocumenti / df);
+                double tfIdf = tf * idf;
+                
+                punteggioTotale += tfIdf;
+            }
+            punteggiFinali.put(doc, punteggioTotale);
+        }
+        
+        List<Map.Entry<Documento, Double>> listaOrdinata = new ArrayList<>(punteggiFinali.entrySet());
+        listaOrdinata.sort((a, b) -> b.getValue().compareTo(a.getValue()));
+        
+        return listaOrdinata;
+    }
+}
